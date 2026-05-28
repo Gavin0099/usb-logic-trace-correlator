@@ -97,14 +97,20 @@ def _format_size(size: int | None) -> str:
 
 def _parse_bushound_stream(uploaded_file, max_events: int | None = None):
     uploaded_file.seek(0)
-    with io.TextIOWrapper(uploaded_file, encoding="utf-8", errors="replace") as stream:
+    stream = io.TextIOWrapper(uploaded_file, encoding="utf-8", errors="replace")
+    try:
         return parse_bushound_txt(stream, max_events=max_events)
+    finally:
+        stream.detach()  # prevent TextIOWrapper from closing the underlying uploaded file
 
 
 def _parse_saleae_stream(uploaded_file, capture_start: datetime | None, max_events: int | None = None):
     uploaded_file.seek(0)
-    with io.TextIOWrapper(uploaded_file, encoding="utf-8", errors="replace") as stream:
+    stream = io.TextIOWrapper(uploaded_file, encoding="utf-8", errors="replace")
+    try:
         return parse_saleae_i2c_csv(stream, capture_start=capture_start, max_events=max_events)
+    finally:
+        stream.detach()  # prevent TextIOWrapper from closing the underlying uploaded file
 
 
 @st.cache_data(show_spinner=False)
