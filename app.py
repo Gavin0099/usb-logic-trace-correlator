@@ -17,7 +17,7 @@ if str(SRC) not in sys.path:
 
 from usb_logic_trace_correlator.bushound import group_usb_transactions, parse_bushound_txt
 from usb_logic_trace_correlator.compare import compare_usb_vs_i2c
-from usb_logic_trace_correlator.saleae import parse_saleae_i2c_csv
+from usb_logic_trace_correlator.saleae import classify_saleae_csv, parse_saleae_i2c_csv
 from usb_logic_trace_correlator.saleae_sal import extract_i2c_csv_from_sal_bytes, inspect_sal_bytes
 
 
@@ -107,6 +107,22 @@ def _parse_saleae_stream(uploaded_file, capture_start: datetime | None, max_even
         return parse_saleae_i2c_csv(stream, capture_start=capture_start, max_events=max_events)
 
 
+@st.cache_data(show_spinner=False)
+def _classify_saleae_text_cached(text_head: str):
+    """Classify using the first ~8 KB of the CSV (enough for headers + sample rows)."""
+    from usb_logic_trace_correlator.saleae import classify_saleae_csv
+    return classify_saleae_csv(text_head)
+
+
+def _classify_uploaded_csv(uploaded_file):
+    """Peek at the start of an uploaded file and return SaleaeCsvClassification."""
+    uploaded_file.seek(0)
+    head_bytes = uploaded_file.read(8192)
+    uploaded_file.seek(0)
+    head_text = head_bytes.decode("utf-8", errors="replace") if isinstance(head_bytes, bytes) else head_bytes
+    return _classify_saleae_text_cached(head_text)
+
+
 def _cap_df(df: pd.DataFrame, row_cap: int) -> tuple[pd.DataFrame, bool]:
     if len(df) <= row_cap:
         return df, False
@@ -156,6 +172,61 @@ def _nearest_i2c_delta_ms(usb_time: datetime, i2c_events: list, shift_ms: int) -
         if best is None or abs(delta_ms) < abs(best):
             best = delta_ms
     return None if best is None else round(best, 3)
+
+
+def _sampled_nearest_delta_stats(usb_txns: list, i2c_events: list, shift_ms: int, max_samples: int = 1000) -> dict | None:
+    """Compute nearest-I2C-delta statistics on a sampled subset of USB transactions.
+    Always runs (even in perf_mode) because it's capped to max_samples."""
+    usable = [ev for ev in i2c_events if ev.timestamp is not None]
+    if not usable or not usb_txns:
+        return None
+    usable_sorted = sorted(usable, key=lambda e: e.timestamp.timestamp())
+    step = max(1, len(usb_txns) // max_samples)
+    deltas_ms: list[float] = []
+    shift_s = shift_ms / 1000.0
+    for txn in usb_txns[::step]:
+        usb_s = txn.timestamp.timestamp()
+        best: float | None = None
+        for ev in usable_sorted:
+            d = (ev.timestamp.timestamp() + shift_s - usb_s) * 1000.0
+            if best is None or abs(d) < abs(best):
+                best = d
+        if best is not None:
+            deltas_ms.append(best)
+    if not deltas_ms:
+        return None
+    deltas_sorted = sorted(deltas_ms)
+    n = len(deltas_sorted)
+    return {
+        "count": n,
+        "min_ms": round(deltas_sorted[0], 2),
+        "max_ms": round(deltas_sorted[-1], 2),
+        "p50_ms": round(deltas_sorted[n // 2], 2),
+        "p90_ms": round(deltas_sorted[int(n * 0.9)], 2),
+        "suggested_shift_ms": round(deltas_sorted[n // 2], 0),
+    }
+
+
+_READINESS_COLORS = {"READY": "#1f7a3e", "DEGRADED": "#9a6700", "BLOCKED": "#a40e26"}
+
+
+def _readiness_badge(status: str, reasons: list[str]) -> None:
+    color = _READINESS_COLORS.get(status, "#6b7280")
+    reasons_html = "".join(f"<li style='margin:0.1rem 0;'>{r}</li>" for r in reasons)
+    st.markdown(
+        f"""<div style="padding:0.7rem 1rem;border-left:4px solid {color};background:#f9fafb;border-radius:0.4rem;margin-bottom:0.5rem;">
+        <span style="font-weight:700;color:{color};font-size:1rem;">{status}</span>
+        <ul style="margin:0.3rem 0 0 1rem;padding:0;font-size:0.82rem;color:#374151;">{reasons_html}</ul>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
+def _suspicion_item(severity: str, title: str, evidence: str, action: str) -> None:
+    icon = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🔵"}.get(severity, "⚪")
+    with st.expander(f"{icon} [{severity}] {title}", expanded=(severity == "HIGH")):
+        st.markdown(f"**佐證：** {evidence}")
+        st.markdown(f"**建議動作：** {action}")
 
 
 def _timeline_chart(txn_df: pd.DataFrame, i2c_events: list, shift_ms: int) -> None:
@@ -401,11 +472,57 @@ if bushound_file:
 
     txn_df = _build_txn_df(usb_txns)
 
+    # ── CSV Classification (P0) ────────────────────────────────────────────────
+    csv_classification = None
+    _csv_file_for_classify = None
+    if saleae_mode == "csv":
+        _csv_file_for_classify = saleae_source or saleae_csv_export
+    elif saleae_mode == "sal" and saleae_csv_export is not None:
+        _csv_file_for_classify = saleae_csv_export
+    elif saleae_mode == "sal" and sal_auto_csv_text:
+        csv_classification = _classify_saleae_text_cached(sal_auto_csv_text[:8192])
+
+    if _csv_file_for_classify is not None:
+        csv_classification = _classify_uploaded_csv(_csv_file_for_classify)
+
+    csv_valid = csv_classification is not None and csv_classification.valid_for_correlation
+
     if large_mode and isinstance(saleae_text, list):
         i2c_events = saleae_text
     else:
-        i2c_events = _parse_saleae_cached(saleae_text, capture_start) if saleae_text else []
-    correlation_ready = len(i2c_events) > 0
+        i2c_events = _parse_saleae_cached(saleae_text, capture_start) if (saleae_text and csv_valid) else []
+
+    # ── Correlation Readiness (P1) ─────────────────────────────────────────────
+    corr_readiness = "BLOCKED"
+    corr_reasons: list[str] = []
+
+    if not bus_events:
+        corr_reasons.append("缺少 Bus Hound TXT")
+    elif csv_classification is None:
+        corr_reasons.append("尚未提供 Saleae CSV")
+    elif not csv_valid:
+        kind_zh = {"digital_export_csv": "數位波形匯出", "unknown_time_series_csv": "未知時間序列", "invalid_csv": "無效 CSV"}.get(csv_classification.csv_kind, csv_classification.csv_kind)
+        corr_reasons.append(f"Saleae CSV 類型為「{kind_zh}」，非 I2C Analyzer CSV")
+        corr_reasons.append(f"原因：{csv_classification.reason}")
+        if csv_classification.missing_i2c_columns:
+            corr_reasons.append(f"缺少欄位：{', '.join(csv_classification.missing_i2c_columns)}")
+    elif not i2c_events:
+        corr_reasons.append("CSV 已通過分類但解析到 0 個 I2C 事件（格式可能不符）")
+    else:
+        if large_mode:
+            corr_readiness = "DEGRADED"
+            corr_reasons.append(f"大檔案模式：分析範圍僅限前 {large_row_cap:,} 列，結論不代表全檔")
+            if csv_classification.confidence == "medium":
+                corr_reasons.append("I2C CSV 信心度 medium：部分 I2C 欄位缺少")
+        else:
+            corr_readiness = "READY"
+            if csv_classification.confidence == "medium":
+                corr_readiness = "DEGRADED"
+                corr_reasons.append("I2C CSV 信心度 medium：部分 I2C 欄位缺少")
+        if not corr_reasons:
+            corr_reasons.append(f"Bus Hound {len(usb_txns):,} 筆交易 + Saleae {len(i2c_events):,} 個 I2C 事件")
+
+    correlation_ready = corr_readiness in ("READY", "DEGRADED") and len(i2c_events) > 0
 
     if correlation_ready:
         match_results, unmatched_i2c = compare_usb_vs_i2c(
@@ -458,7 +575,7 @@ if bushound_file:
     usb_error_count = int((txn_df["status"] != "ok").sum()) if not txn_df.empty else 0
 
     st.subheader("資料就緒狀態")
-    s1, s2, s3, s4 = st.columns(4)
+    s1, s2, s3, s4, s5 = st.columns(5)
     with s1:
         if bus_events:
             _status_block("Bus Hound TXT", "已解析", f"{len(bus_events)} 事件 / {len(usb_txns)} 交易", "ok")
@@ -473,21 +590,33 @@ if bushound_file:
         else:
             _status_block("Saleae .sal", "未提供", "可選 Metadata", "muted")
     with s3:
+        if csv_classification is not None:
+            if csv_classification.valid_for_correlation:
+                conf_zh = {"high": "高", "medium": "中", "low": "低"}.get(csv_classification.confidence, csv_classification.confidence)
+                _status_block("CSV 分類", "Analyzer CSV", f"信心度 {conf_zh}・{len(i2c_events)} 個 I2C 事件", "ok")
+            else:
+                kind_zh = {"digital_export_csv": "數位波形", "unknown_time_series_csv": "未知序列", "invalid_csv": "無效"}.get(csv_classification.csv_kind, csv_classification.csv_kind)
+                _status_block("CSV 分類", f"非 Analyzer（{kind_zh}）", csv_classification.reason[:60], "error")
+        elif saleae_text is not None:
+            _status_block("CSV 分類", "未分類", "格式未知", "warn")
+        else:
+            _status_block("CSV 分類", "未提供", "比對需要此檔", "warn")
+    with s4:
         if correlation_ready:
             source = "自 .sal 自動抽取" if sal_auto_csv_used else "Analyzer CSV 已解析"
-            _status_block("Saleae CSV", "就緒", f"{len(i2c_events)} 個 I2C 事件（{source}）", "ok")
+            _status_block("Saleae I2C", "就緒", f"{len(i2c_events)} 個事件（{source}）", "ok")
         else:
-            _status_block("Saleae CSV", "缺少", "比對需要此檔", "error")
-    with s4:
+            _status_block("Saleae I2C", "不可用", "需要 I2C Analyzer CSV", "error")
+    with s5:
         if correlation_ready:
             _status_block("比對結果", "已啟用", f"window={int(window_ms)}ms，shift={int(shift_ms)}ms", "ok")
         else:
-            _status_block("比對結果", "已停用", "需要已解析 I2C 事件", "warn")
+            _status_block("比對結果", "已停用", "需要 I2C Analyzer CSV", "warn")
 
     st.subheader("診斷摘要")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("USB 交易數", len(usb_txns), f"{out_count} OUT / {in_count} IN")
-    c2.metric("比對狀態", "就緒" if correlation_ready else "未就緒", f"Top req: {top_reqs}")
+    c2.metric("比對狀態", corr_readiness, f"Top req: {top_reqs}")
     c3.metric(
         "USB 錯誤",
         usb_error_count,
@@ -495,13 +624,20 @@ if bushound_file:
     )
     c4.metric("可疑時間窗口", long_gap_count, f"長間隔 > {int(long_gap_threshold_ms)}ms")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["概覽", "USB 瀏覽器", "錯誤與逓時", "比對結果", "原始資料"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["概覽", "USB 瀏覽器", "命令模式", "錯誤與逾時", "比對結果", "原始資料"])
 
     with tab1:
         if not correlation_ready:
-            st.warning(
-                "目前只能解析 Bus Hound transaction。Saleae 尚未提供可用 Analyzer CSV，因此 USB ↔ I2C 差異比對尚未成立。"
-            )
+            if csv_classification is not None and not csv_classification.valid_for_correlation:
+                kind_zh = {"digital_export_csv": "數位波形匯出", "unknown_time_series_csv": "未知時間序列", "invalid_csv": "無效 CSV"}.get(csv_classification.csv_kind, csv_classification.csv_kind)
+                st.warning(
+                    f"**比對已封鎖**：上傳的 CSV 被識別為「{kind_zh}」，非 I2C Analyzer CSV。\n\n"
+                    f"原因：{csv_classification.reason}\n\n請從 Saleae Logic 2 以 **I2C Analyzer** 匯出 CSV 後重新上傳。"
+                )
+            else:
+                st.warning(
+                    "目前只能解析 Bus Hound transaction。Saleae 尚未提供可用 Analyzer CSV，因此 USB ↔ I2C 差異比對尚未成立。"
+                )
         if saleae_mode == "sal" and saleae_info and saleae_info.ok:
             st.write(
                 {
@@ -620,6 +756,40 @@ if bushound_file:
                             st.text(ev.raw_line)
 
     with tab3:
+        # P3: Command Pattern Dashboard
+        st.subheader("命令模式分析")
+        if txn_df.empty:
+            st.info("沒有可分析的 transaction。")
+        else:
+            grp_cols = ["direction", "request", "wValue", "wIndex", "status"]
+            avail_grp = [c for c in grp_cols if c in txn_df.columns]
+            cmd_grp = (
+                txn_df.groupby(avail_grp, as_index=False)
+                .agg(
+                    count=("txn_id", "count"),
+                    first_time=("time_text", "first"),
+                    last_time=("time_text", "last"),
+                    avg_delta_ms=("delta_ms", "mean"),
+                )
+                .sort_values("count", ascending=False)
+            )
+            if not match_df.empty and not txn_df.empty:
+                txn_with_match = txn_df.merge(match_df, left_on="txn_id", right_on="usb_txn_id", how="left")
+                matched_flags = (
+                    txn_with_match.groupby(avail_grp, as_index=False)["matched_i2c_count"]
+                    .agg(matched_cnt=lambda s: int((s.fillna(0) > 0).sum()))
+                )
+                cmd_grp = cmd_grp.merge(matched_flags, on=avail_grp, how="left")
+                cmd_grp["matched_cnt"] = cmd_grp["matched_cnt"].fillna(0).astype(int)
+                cmd_grp["matched_ratio"] = (cmd_grp["matched_cnt"] / cmd_grp["count"].replace(0, 1)).round(2)
+            if "avg_delta_ms" in cmd_grp.columns:
+                cmd_grp["avg_delta_ms"] = cmd_grp["avg_delta_ms"].round(1)
+            cmd_view, cmd_trimmed = _cap_df(cmd_grp, table_row_cap)
+            if cmd_trimmed:
+                st.caption(f"UI 僅顯示前 {table_row_cap} 列命令模式。")
+            st.dataframe(cmd_view, use_container_width=True, hide_index=True)
+
+    with tab4:
         if txn_df.empty:
             st.info("沒有可分析的 transaction。")
         else:
@@ -654,7 +824,7 @@ if bushound_file:
                     st.caption(f"UI 僅顯示前 {table_row_cap} 列重複模式。")
                 st.dataframe(repeat_view, use_container_width=True, hide_index=True)
 
-    with tab4:
+    with tab5:
         if not correlation_ready:
             st.markdown("### 尚未開始 USB ↔ I2C correlation")
             lines = []
@@ -665,7 +835,41 @@ if bushound_file:
             st.markdown("\n".join(lines))
             _render_saleae_export_guide(saleae_mode, saleae_info, saleae_text, i2c_events, sal_auto_csv_text)
         else:
-            st.success("比對已啟用")
+            _readiness_badge(corr_readiness, corr_reasons)
+
+            # ── P4: Suspicion Queue ───────────────────────────────────────────
+            suspicions: list[tuple[str, str, str, str]] = []
+            if csv_classification and not csv_classification.valid_for_correlation:
+                suspicions.append(("HIGH", "CSV 非 I2C Analyzer", csv_classification.reason, "請從 Saleae Logic 2 以 I2C Analyzer 匯出 CSV"))
+            if correlation_ready:
+                matched_cnt = int((match_df["matched_i2c_count"].fillna(0) > 0).sum()) if not match_df.empty else 0
+                total_usb = len(usb_txns)
+                unmatched_cnt = total_usb - matched_cnt
+                if total_usb > 0 and matched_cnt == 0:
+                    suspicions.append(("HIGH", "所有 USB 交易均無 I2C 對應", f"{total_usb} 筆 USB 全部未匹配", "調整時間偏移 (shift_ms) 或確認時間戳格式"))
+                elif total_usb > 0 and unmatched_cnt / total_usb > 0.8:
+                    suspicions.append(("MEDIUM", f"逾 80% USB 交易無 I2C 對應 ({unmatched_cnt}/{total_usb})", "未匹配比例過高", "嘗試調整 Window 或 Shift 參數"))
+                if not txn_df.empty and not txn_df[txn_df["status"] == "STALL"].empty:
+                    stall_cnt = int((txn_df["status"] == "STALL").sum())
+                    suspicions.append(("MEDIUM", f"偵測到 {stall_cnt} 個 STALL 狀態", "STALL 可能代表裝置錯誤或驅動問題", "詳見「錯誤與逾時」分頁"))
+                # Check time overlap
+                usb_times = [t for t in txn_df["time"].tolist() if isinstance(t, datetime)] if not txn_df.empty else []
+                i2c_times = [ev.timestamp for ev in i2c_events if ev.timestamp is not None]
+                if usb_times and i2c_times:
+                    usb_start, usb_end = min(usb_times), max(usb_times)
+                    i2c_start, i2c_end = min(i2c_times), max(i2c_times)
+                    overlap_start = max(usb_start, i2c_start)
+                    overlap_end = min(usb_end, i2c_end)
+                    if overlap_start > overlap_end:
+                        suspicions.append(("HIGH", "USB 與 I2C 時間軸無重疊", f"USB: {usb_start:%H:%M:%S}–{usb_end:%H:%M:%S} / I2C: {i2c_start:%H:%M:%S}–{i2c_end:%H:%M:%S}", "調整 shift_ms 或確認兩份資料來自同一次捕獲"))
+            if large_mode:
+                suspicions.append(("LOW", "大檔案模式已截斷資料", f"每筆資料僅分析前 {large_row_cap:,} 列", "如需完整分析請使用完整模式"))
+
+            if suspicions:
+                st.markdown("#### 📋 可疑項目")
+                for sev, title, evidence, action in suspicions:
+                    _suspicion_item(sev, title, evidence, action)
+
             corr_df = txn_df.merge(match_df, left_on="txn_id", right_on="usb_txn_id", how="left")
             if perf_mode:
                 corr_df["unmatched_reason"] = corr_df["matched_i2c_count"].fillna(0).apply(
@@ -692,6 +896,20 @@ if bushound_file:
             m1.metric("有 I2C 對應的 USB", int((corr_df["matched_i2c_count"].fillna(0) > 0).sum()))
             m2.metric("無 I2C 對應的 USB", int((corr_df["matched_i2c_count"].fillna(0) == 0).sum()))
             m3.metric("無 USB 對應的 I2C", len(unmatched_i2c_df))
+
+            # P2: Sampled nearest-delta analysis
+            delta_stats = _sampled_nearest_delta_stats(usb_txns, i2c_events, int(shift_ms))
+            if delta_stats:
+                with st.expander("⏱ 時間對齊分析（抽樣）", expanded=True):
+                    d1, d2, d3, d4 = st.columns(4)
+                    d1.metric("最近 I2C delta p50", f"{delta_stats['p50_ms']:+.1f} ms")
+                    d2.metric("最近 I2C delta p90", f"{delta_stats['p90_ms']:+.1f} ms")
+                    d3.metric("最近 I2C delta 最小", f"{delta_stats['min_ms']:+.1f} ms")
+                    d4.metric("最近 I2C delta 最大", f"{delta_stats['max_ms']:+.1f} ms")
+                    suggested = delta_stats["suggested_shift_ms"]
+                    if abs(suggested - int(shift_ms)) > 10:
+                        st.info(f"偵測到穩定偏移 {suggested:+.0f} ms（目前 shift={int(shift_ms)} ms）。建議調整 shift_ms 為 {suggested:.0f}。")
+                    st.caption(f"抽樣數：{delta_stats['count']} 筆 USB 交易")
 
             st.markdown("#### 有 I2C 對應的 USB 交易")
             matched_usb = corr_df[corr_df["matched_i2c_count"].fillna(0) > 0][
@@ -723,7 +941,7 @@ if bushound_file:
                     st.caption(f"UI 僅顯示前 {table_row_cap} 列未匹配 I2C。")
                 st.dataframe(unmatched_i2c_view, use_container_width=True)
 
-    with tab5:
+    with tab6:
         render_raw_tables = True
         if perf_mode:
             render_raw_tables = st.checkbox("顯示原始資料表（速度較慢）", value=False)
