@@ -1,3 +1,8 @@
+﻿<!-- governance:memory_authority -->
+memory_root: memory/
+external_memory_allowed: false
+operational_records_must_stay_under_memory_root: true
+
 ---
 audience: agent-runtime
 authority: canonical
@@ -281,3 +286,4 @@ When using `hooks_ready`, `repo_native_verified`, `clean_admissibility`,
 `expected_dirty_ttl`, or `self_hosting_gap_closed`, use the definitions in
 `governance/fleet/operational_semantics_v1.md`. Do not imply broader authority
 than the verifier can prove.
+

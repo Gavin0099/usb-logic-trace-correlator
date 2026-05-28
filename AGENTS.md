@@ -1,3 +1,8 @@
+﻿<!-- governance:memory_authority -->
+memory_root: memory/
+external_memory_allowed: false
+operational_records_must_stay_under_memory_root: true
+
 # AGENTS.md
 <!-- governance-baseline: overridable -->
 <!-- baseline_version: 1.0.0 -->
@@ -83,3 +88,4 @@ Prompt yourself:
 -->
 
 N/A
+
