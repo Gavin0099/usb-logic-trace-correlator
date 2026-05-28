@@ -1,0 +1,54 @@
+{
+  "source": "pytest-text",
+  "summary": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "test_names": [],
+  "failure_test_validation": {
+    "ok": false,
+    "required_categories": [
+      "invalid_input",
+      "boundary",
+      "failure_path"
+    ],
+    "coverage": {
+      "invalid_input": {
+        "count": 0,
+        "matches": []
+      },
+      "boundary": {
+        "count": 0,
+        "matches": []
+      },
+      "failure_path": {
+        "count": 0,
+        "matches": []
+      },
+      "rollback_cleanup": {
+        "count": 0,
+        "matches": []
+      }
+    },
+    "warnings": [
+      "Rollback / cleanup coverage was not detected."
+    ],
+    "errors": [
+      "Missing required failure-test coverage: invalid_input",
+      "Missing required failure-test coverage: boundary",
+      "Missing required failure-test coverage: failure_path"
+    ]
+  },
+  "failure_disposition": null,
+  "diagnostics": [],
+  "warnings": [
+    "Rollback / cleanup coverage was not detected."
+  ],
+  "errors": [
+    "Missing required failure-test coverage: invalid_input",
+    "Missing required failure-test coverage: boundary",
+    "Missing required failure-test coverage: failure_path"
+  ],
+  "ok": false
+}

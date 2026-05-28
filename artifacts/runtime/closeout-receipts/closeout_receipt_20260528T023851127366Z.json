@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "timestamp": "2026-05-28T02:38:51.154773+00:00",
+  "agent_id": "unknown",
+  "trigger_mode": "unknown",
+  "entrypoint": "governance_tools.session_closeout_entry",
+  "exit_code": 0,
+  "linked_head_commit": "",
+  "closeout_artifact_path": "E:\\BackUp\\Git_EE\\usb-logic-trace-correlator\\artifacts\\session-closeout.txt",
+  "checksum_of_cleaned_path": "80b4251d23721a097e3e64878894472f885403cf95855356122fc0d5847b37e2",
+  "memory_eligibility_evaluated": true,
+  "memory_write_required": false,
+  "memory_write_performed": false,
+  "memory_eligibility_reason": "no_eligibility_trigger"
+}

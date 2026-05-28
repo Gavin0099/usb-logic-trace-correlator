@@ -1,0 +1,1 @@
+﻿CHECKS_RUN: hooks 安裝 + closeout 執行

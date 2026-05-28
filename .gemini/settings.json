@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "command": "python E:/BackUp/Git_EE/ai-governance-framework/governance_tools/session_closeout_entry.py --project-root . 2>/dev/null || true",
+        "timeout": 30
+      }
+    ]
+  }
+}
