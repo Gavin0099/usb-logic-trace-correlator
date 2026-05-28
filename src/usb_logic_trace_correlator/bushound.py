@@ -19,6 +19,7 @@ class BusHoundEvent:
     delta_us: int | None
     cmd: str
     timestamp: datetime
+    raw_line: str
 
 
 @dataclass
@@ -34,6 +35,9 @@ class UsbTransaction:
     data_direction: str | None
     payload_hex: str
     status: str
+    note: str
+    delta_from_prev_ms: float | None
+    raw_events: list[BusHoundEvent]
 
 
 def _parse_delta_to_us(delta: str) -> int | None:
@@ -64,9 +68,16 @@ def _parse_ctl_setup(data: str) -> tuple[str, str, str, str, str] | None:
     )
 
 
-def parse_bushound_txt(content: str) -> list[BusHoundEvent]:
+def _iter_text_lines(content: str | Iterable[str]) -> Iterable[str]:
+    if isinstance(content, str):
+        yield from content.splitlines()
+        return
+    yield from content
+
+
+def parse_bushound_txt(content: str | Iterable[str], max_events: int | None = None) -> list[BusHoundEvent]:
     events: list[BusHoundEvent] = []
-    for raw_line in content.splitlines():
+    for raw_line in _iter_text_lines(content):
         line = raw_line.rstrip("\n")
         if not line.strip():
             continue
@@ -105,8 +116,11 @@ def parse_bushound_txt(content: str) -> list[BusHoundEvent]:
                 delta_us=_parse_delta_to_us(delta),
                 cmd=cmd.strip(),
                 timestamp=ts,
+                raw_line=line,
             )
         )
+        if max_events is not None and len(events) >= max_events:
+            break
 
     return events
 
@@ -133,6 +147,9 @@ def group_usb_transactions(events: Iterable[BusHoundEvent]) -> list[UsbTransacti
                 data_direction=current["data_direction"],
                 payload_hex=" ".join(current["payload"]).strip(),
                 status=current["status"],
+                note=current["note"],
+                delta_from_prev_ms=None,
+                raw_events=list(current["raw_events"]),
             )
         )
         txn_id += 1
@@ -152,11 +169,15 @@ def group_usb_transactions(events: Iterable[BusHoundEvent]) -> list[UsbTransacti
                 "data_direction": direction,
                 "payload": [],
                 "status": "ok",
+                "note": "",
+                "raw_events": [ev],
             }
             continue
 
         if not current or ev.device != current["device"]:
             continue
+
+        current["raw_events"].append(ev)
 
         if ev.phase in {"IN", "OUT"}:
             if re.fullmatch(r"[0-9a-fA-F ]+", ev.data):
@@ -165,10 +186,22 @@ def group_usb_transactions(events: Iterable[BusHoundEvent]) -> list[UsbTransacti
             desc = ev.description.lower()
             if "stall" in desc:
                 current["status"] = "stall"
+                current["note"] = ev.description.strip()
             elif "cancel" in desc:
                 current["status"] = "canceled"
+                current["note"] = ev.description.strip()
             else:
                 current["status"] = desc or "status"
+                current["note"] = ev.description.strip()
 
     flush_current()
+
+    prev_ts: datetime | None = None
+    for txn in txns:
+        if prev_ts is None:
+            txn.delta_from_prev_ms = None
+        else:
+            txn.delta_from_prev_ms = (txn.timestamp - prev_ts).total_seconds() * 1000.0
+        prev_ts = txn.timestamp
+
     return txns

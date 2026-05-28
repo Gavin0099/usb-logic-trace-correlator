@@ -1,4 +1,43 @@
 PLAN：USB + Saleae Log Parse Tool
+
+---
+
+修復紀錄（2026-05-28）
+
+主題：Qt 桌面版啟動後顯示 Not Found
+
+現象
+
+- `usb-logic-trace-correlator-qt-app.exe` 可啟動，但內嵌頁面顯示 `Not Found`。
+- `http://127.0.0.1:8501/_stcore/health` 回 `200`，但 `/` 回 `404`。
+
+根因
+
+- Qt onedir 打包未完整包含 Streamlit 前端靜態資源，造成後端存在但首頁路由無法提供 UI。
+
+已完成修正
+
+- `qt_desktop.py` 的 readiness 檢查改為 `/_stcore/health`。
+- 重新打包 Qt onedir，改用：
+
+```powershell
+python -m PyInstaller --noconfirm --clean --windowed --onedir --name usb-logic-trace-correlator-qt-app qt_desktop.py --add-data "app.py;." --add-data "src;src" --collect-all streamlit
+```
+
+- 已確認輸出包含 Streamlit 靜態資源（`_internal/streamlit/static`）。
+
+驗證結果
+
+- 啟動 `dist/usb-logic-trace-correlator-qt-app/usb-logic-trace-correlator-qt-app.exe` 後：
+  - `http://127.0.0.1:8501/` 回 `200 OK`
+  - 回應內容為 Streamlit `index.html`（含 `static/js` 與 `static/css`）
+
+目前建議交付
+
+- 主要可用版本：Qt onedir
+- 入口檔：`dist/usb-logic-trace-correlator-qt-app/usb-logic-trace-correlator-qt-app.exe`
+- 備註：Qt onefile 在此環境曾出現檔案鎖定與封裝不穩，暫不作為首選交付。
+
 目標定義
 
 建立一個工具，可以讀取：

@@ -1,0 +1,4 @@
+[server]
+# Allow very large trace uploads (MB). Tune as needed for available RAM.
+maxUploadSize = 4096
+maxMessageSize = 4096

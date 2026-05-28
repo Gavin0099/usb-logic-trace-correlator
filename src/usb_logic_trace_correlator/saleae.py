@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import csv
 import io
 import re
+from typing import Iterable
 
 
 @dataclass
@@ -37,8 +38,18 @@ def _normalize_data_hex(text: str) -> str:
     return " ".join(b.lower() for b in bytes_found)
 
 
-def parse_saleae_i2c_csv(content: str, capture_start: datetime | None = None) -> list[SaleaeI2CEvent]:
-    reader = csv.DictReader(io.StringIO(content))
+def _as_text_reader(content: str | Iterable[str]):
+    if isinstance(content, str):
+        return io.StringIO(content)
+    return content
+
+
+def parse_saleae_i2c_csv(
+    content: str | Iterable[str],
+    capture_start: datetime | None = None,
+    max_events: int | None = None,
+) -> list[SaleaeI2CEvent]:
+    reader = csv.DictReader(_as_text_reader(content))
     if not reader.fieldnames:
         return []
 
@@ -78,5 +89,7 @@ def parse_saleae_i2c_csv(content: str, capture_start: datetime | None = None) ->
                 raw_summary=summary,
             )
         )
+        if max_events is not None and len(events) >= max_events:
+            break
 
     return events
