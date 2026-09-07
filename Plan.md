@@ -1,5 +1,9 @@
 PLAN：USB + Saleae Log Parse Tool
 
+> **最後更新**: 2026-09-07
+> **Owner**: repository maintainers
+> **Freshness**: Sprint (7d)
+
 ---
 
 架構決策（2026-09-07）

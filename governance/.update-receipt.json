@@ -1,0 +1,30 @@
+{
+  "receipt_version": "0.1",
+  "receipt_type": "ai_governance_update",
+  "tool": "f7_full_update",
+  "tool_mode": "apply",
+  "repo_root": "E:\\BackUp\\Git_EE\\usb-logic-trace-correlator",
+  "framework_root": "E:\\BackUp\\Git_EE\\usb-logic-trace-correlator\\ai-governance-framework",
+  "framework_before": "10044277b99e68973130d23ce97697418de59d21",
+  "framework_after": "10044277b99e68973130d23ce97697418de59d21",
+  "lock_adopted_commit": "10044277b99e68973130d23ce97697418de59d21",
+  "lock_matches_checkout": true,
+  "update_status": "updated",
+  "generated_at_utc": "2026-09-07T03:11:05Z",
+  "claim_boundary": [
+    "receipt is review evidence, not proof",
+    "no fetch truth is implied unless explicitly recorded",
+    "consumer repo adoption is not proven complete"
+  ],
+  "not_claimed": [
+    "full governance adoption",
+    "hook/CI enforcement",
+    "memory completeness",
+    "domain correctness",
+    "release readiness"
+  ],
+  "warnings": [
+    "f7-diagnostic: uncommitted governance surfaces are present; treat as rollout scope until reviewed/committed",
+    "f7-diagnostic: non-governance dirty scopes are present; use a clean worktree before F-7 apply/remediation"
+  ]
+}

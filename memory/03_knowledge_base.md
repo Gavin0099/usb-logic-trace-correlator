@@ -42,3 +42,9 @@ pyinstaller --noconfirm --clean usb-logic-trace-correlator-qt-app.spec
 - `src/usb_logic_trace_correlator/saleae_sal.py` — `.sal` metadata/embedded-CSV bridge and native decode fallback
 - `src/usb_logic_trace_correlator/saleae_sal_native.py` — bounded native Saleae digital-v2 → I2C decoder
 - `src/usb_logic_trace_correlator/compare.py` — USB↔I2C correlation
+## 將 AI Governance framework 1.3.0 完整導入 usb-logic-trace-correlator repository。
+- Captured: 2026-09-07T03:18:27.671642+00:00
+- Approved by: governance-auto
+- Risk: low
+- Oversight: auto
+- Summary: 將 AI Governance framework 1.3.0 完整導入 usb-logic-trace-correlator repository。

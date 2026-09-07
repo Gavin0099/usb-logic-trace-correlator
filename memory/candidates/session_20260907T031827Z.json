@@ -1,0 +1,9 @@
+{
+  "captured_at": "2026-09-07T03:18:27.671642+00:00",
+  "task": "將 AI Governance framework 1.3.0 完整導入 usb-logic-trace-correlator repository。",
+  "summary": "將 AI Governance framework 1.3.0 完整導入 usb-logic-trace-correlator repository。",
+  "risk": "low",
+  "oversight": "auto",
+  "source_text": "TASK_INTENT: 將 AI Governance framework 1.3.0 完整導入 usb-logic-trace-correlator repository。\nWORK_COMPLETED: framework checkout 固定於 1.3.0 / 10044277b99e68973130d23ce97697418de59d21；完成官方 F-7 apply、hooks、Copilot lifecycle、canonical governance docs、Plan metadata、source_boundary_validator.py 與 version_manifest.yaml 導入；external_repo_readiness、governance_drift_checker、quickstart_smoke、governance_version_check 與 runtime_surface_manifest_smoke 均通過。\nFILES_TOUCHED: AGENTS.md, contract.yaml, Plan.md, validators/source_boundary_validator.py, .governance/baseline.yaml, .governance/version_manifest.yaml, .github/copilot-instructions.md, .git/hooks/pre-commit, .git/hooks/pre-push, governance/framework.lock.json, artifacts/evidence/test-results/governance-readiness-final.json, artifacts/session-closeout.txt, memory/01_active_task.md, memory/04_review_log.md, memory/2026-09-07.md\nOPEN_RISKS: governance/framework.lock.json 尚未提交，因此 strict full adoption 與 lock consistency 尚未宣稱；尚未驗證 USB/Saleae domain correctness、fleet/CI enforcement 或 packaged runtime。",
+  "status": "promoted"
+}

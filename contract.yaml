@@ -13,3 +13,4 @@ ai_behavior_override:
 rule_roots:
   - governance/rules
 validators:
+  - validators/source_boundary_validator.py
