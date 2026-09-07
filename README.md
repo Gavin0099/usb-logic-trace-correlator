@@ -3,8 +3,8 @@
 這個工具用來直接比較兩種來源的 log：
 
 - Bus Hound `.txt`
-- Saleae `.sal`（先讀 metadata）
-- Saleae Logic 匯出的 I2C Analyzer `.csv`（正式比對）
+- Saleae `.sal`：先讀 metadata；對已驗證的 digital-v2 I2C capture 可直接原生解碼
+- Saleae Logic 匯出的 I2C Analyzer `.csv`：較穩定、跨版本的正式 fallback
 
 重點是快速找出「不一樣的地方」：
 
@@ -89,7 +89,10 @@ dist/usb-logic-trace-correlator-qt-app/usb-logic-trace-correlator-qt-app.exe
 
 1. 上傳 Bus Hound TXT。
 2. 上傳 Saleae Source：可以是 `.sal` 或 I2C CSV。
-3. 如果上傳 `.sal`，再上傳 Saleae Analyzer 匯出 CSV。
+3. 如果上傳 `.sal`：
+   - 工具會先讀 metadata 與 I2C analyzer 的 SDA/SCL channel。
+   - 若是目前已驗證的 Saleae digital-v2 格式，會直接從 raw digital data 還原 I2C transaction，再接回既有 correlation 流程。
+   - 若格式不支援、設定不明確或 native decode 失敗，再上傳 Saleae Analyzer 匯出 CSV。
 4. 如果 Saleae CSV 是相對時間，填入 Capture Start 時間（或讓 .sal metadata 自動帶入）。
 5. 依實際情況調整：
    - `I2C 時間偏移 (ms)`
@@ -99,10 +102,19 @@ dist/usb-logic-trace-correlator-qt-app/usb-logic-trace-correlator-qt-app.exe
    - `I2C 無對應 USB`
    - `全部 USB Transaction`
 
+## Native `.sal` 支援邊界
+
+- Native `.sal` parser 是 **bounded compatibility path**，不是 Saleae raw format 的完整或穩定契約。
+- 目前只接受已驗證的 digital binary v2 / type 100 / RLE layout。
+- 需要一組具明確 SDA/SCL channel 的 I2C analyzer；多組或不明確設定不會猜測。
+- 未驗證 binary version、缺少 sample rate、digital chunk/RLE 結構不一致等情況會 fail closed，改走 Analyzer CSV fallback。
+- 若 `.sal` 內本身包含可用 Analyzer/export CSV，會優先使用該 CSV。
+- 目前 native path 只負責 I2C；INT、power 等 sideband correlation 尚未接入 normalized timeline。
+
 ## 注意
 
-- `.sal` 目前只用來讀 metadata；事件解析仍以 Saleae 匯出的 Analyzer CSV 為主。
-- 目前 Saleae 端先以 I2C CSV 為主；SPI/UART 可後續擴充。
+- Saleae Analyzer CSV 仍是較穩定的跨版本輸入方式；SPI/UART 可後續擴充。
 - 如果 Bus Hound TXT 或 Saleae CSV 已經到數百 MB 以上，建議開啟 Large file mode，讓工具改走 streaming parse + row cap，避免每次 rerun 都重做完整載入。
+- Native `.sal` decode 目前是 in-memory path；不要假設它和 CSV streaming mode 一樣適合 multi-GB capture。
 - 如果 trace log 未來會到幾 GB，這個 GUI 仍建議搭配時間窗或分段輸出使用，不要一次全量匯入。
 - 上傳上限由 `.streamlit/config.toml` 控制，目前設定為 `4096 MB`。如需更大可再調整 `server.maxUploadSize` 與 `server.maxMessageSize`。
