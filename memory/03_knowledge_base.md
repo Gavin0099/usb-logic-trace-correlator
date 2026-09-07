@@ -34,3 +34,9 @@ pyinstaller --noconfirm --clean usb-logic-trace-correlator-qt-app.spec
 - `src/usb_logic_trace_correlator/bushound.py` — Bus Hound TXT parser
 - `src/usb_logic_trace_correlator/saleae.py` — Saleae I2C CSV parser
 - `src/usb_logic_trace_correlator/compare.py` — USB↔I2C correlation
+## 將 AI Governance framework 1.3.0 完整導入 usb-logic-trace-correlator repository。
+- Captured: 2026-09-07T03:18:27.671642+00:00
+- Approved by: governance-auto
+- Risk: low
+- Oversight: auto
+- Summary: 將 AI Governance framework 1.3.0 完整導入 usb-logic-trace-correlator repository。

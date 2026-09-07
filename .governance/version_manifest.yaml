@@ -1,0 +1,17 @@
+# .governance/version_manifest.yaml
+#
+# Repo-side governance layout version declaration.
+# Describes which governance component versions are ACTUALLY installed in this repo.
+#
+# Compared against governance/runtime/required_versions.yaml by
+# governance_tools/governance_version_check.py at session-start time.
+
+schema_version: "1.0"
+last_updated: "2026-04-24"
+governance_version: "0.4.0"
+
+contract_schema_version: "1.2.0"
+runtime_entrypoint_version: "1.1.0"
+hook_wiring_version: "1.0.0"
+artifact_layout_version: "1.0.0"
+memory_layout_version: "1.0.0"
