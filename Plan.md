@@ -2,6 +2,41 @@ PLAN：USB + Saleae Log Parse Tool
 
 ---
 
+架構決策（2026-09-07）
+
+主題：允許 bounded native Saleae `.sal` I2C ingress
+
+背景
+
+- Phase 0 原則是不要把 Saleae 內部 `.sal` raw format 當成穩定的正式契約；這個風險判斷仍然成立。
+- 實際除錯需求需要在沒有 Analyzer CSV 時，直接從已知 `.sal` capture 還原 I2C transaction。
+
+決策
+
+- 允許一條 **bounded / best-effort native `.sal` compatibility path**，但不宣稱完整支援 Saleae raw format。
+- 目前只接受已經用實際 capture 與固定 fixture 驗證過的 Saleae digital binary v2 / type 100 / RLE layout。
+- 需要且目前只支援一組具明確 SDA/SCL channel 的 I2C analyzer；多組或不明確設定不猜測。
+- 未驗證 binary version、缺少 sample rate、chunk 不連續、RLE coverage 不一致、缺少 channel 等情況一律 fail closed。
+- Native decoder 的輸出轉回既有 Analyzer-CSV ingress contract，再由既有 `parse_saleae_i2c_csv` / `SaleaeI2CEvent` / correlation 流程處理；不建立第二套 downstream model。
+- 若 `.sal` 內真的包含 Analyzer/export CSV，仍優先使用該 CSV；手動匯出的 Analyzer CSV 仍是較穩定的 canonical fallback。
+
+非承諾
+
+- 不承諾支援所有 Saleae Logic 2 版本、所有 `.sal` schema、所有 analyzer type。
+- 不把 reverse-engineered container/binary layout 升格成 protocol truth。
+- 本階段只把 raw digital decode 接到既有 I2C boundary；INT / power 等 sideband correlation 另案處理。
+- 不假設目前 in-memory native decode 適合 multi-GB `.sal`；若要擴到大型 capture，必須另訂 streaming/size policy。
+
+驗證門檻
+
+- 固定、預先計算的小型 digital-v2 fixture 必須能解出指定 I2C transaction。
+- 不支援版本與不明確 analyzer 必須證明 fail closed。
+- 私有實際 capture 可作 characterization evidence，但不得把 capture 或真實 payload 提交到 repo。
+
+這條決策只 supersede Phase 0 的「完全不直接 parse `.sal`」禁令；Phase 0 對內部格式不穩定、CSV 較可靠的風險判斷仍保留。
+
+---
+
 修復紀錄（2026-05-28）
 
 主題：Qt 桌面版啟動後顯示 Not Found
