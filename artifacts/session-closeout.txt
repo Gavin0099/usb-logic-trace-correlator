@@ -1,1 +1,4 @@
-﻿CHECKS_RUN: hooks 安裝 + closeout 執行
+CHECKS_RUN: native Saleae parser py_compile + tests/test_saleae_sal_native.py (4/4 PASS) + private external .sal characterization PASS
+SCOPE: bounded Saleae digital-v2 I2C ingress only; existing Analyzer CSV and USB correlation behavior preserved
+NON_CLAIMS: no complete .sal format support; no multi-GB native streaming claim; no sideband INT/power correlation in this change
+FOLLOW_UP: app.py still contains legacy metadata-only wording for .sal status; treat as non-blocking presentation debt
