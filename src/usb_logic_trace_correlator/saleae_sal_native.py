@@ -30,6 +30,24 @@ class NativeI2CSupport:
     digital_channel_names: dict[int, str]
 
 
+@dataclass(frozen=True)
+class DigitalTransition:
+    sample: int
+    time_s: float
+    state: int
+    edge: str
+
+
+@dataclass(frozen=True)
+class NativeDigitalChannel:
+    channel: int
+    name: str | None
+    sample_rate_hz: int
+    initial_state: int
+    end_sample: int
+    transitions: tuple[DigitalTransition, ...]
+
+
 @dataclass
 class _Trace:
     initial_state: int
@@ -220,6 +238,54 @@ def _decode_digital(data: bytes) -> _Trace:
     if first_chunk:
         raise SaleaeSalDecodeError("Saleae digital file contains no chunks")
     return _Trace(initial_state, end_sample, transitions)
+
+
+def _public_transitions(trace: _Trace, sample_rate_hz: int) -> tuple[DigitalTransition, ...]:
+    state = trace.initial_state
+    transitions: list[DigitalTransition] = []
+    for sample in trace.transitions:
+        state ^= 1
+        transitions.append(
+            DigitalTransition(
+                sample=int(sample),
+                time_s=float(sample) / sample_rate_hz,
+                state=state,
+                edge="rising" if state else "falling",
+            )
+        )
+    return tuple(transitions)
+
+
+def decode_digital_channels_from_sal_bytes(data: bytes) -> list[NativeDigitalChannel]:
+    """Decode every mapped digital-v2 channel from a supported `.sal` archive."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data), "r") as zf:
+            meta, payload = _meta_parts(zf)
+            sample_rate_hz = _sample_rate(payload)
+            if sample_rate_hz is None:
+                raise SaleaeSalDecodeError("missing digital sample rate")
+            files = _file_map(meta, payload)
+            if not files:
+                raise SaleaeSalDecodeError(".sal contains no mapped digital channels")
+            names = _channel_names(payload, set(files))
+            channels: list[NativeDigitalChannel] = []
+            for channel, filename in sorted(files.items()):
+                if filename not in zf.namelist():
+                    raise SaleaeSalDecodeError(f"missing digital channel file for channel {channel}")
+                trace = _decode_digital(zf.read(filename))
+                channels.append(
+                    NativeDigitalChannel(
+                        channel=channel,
+                        name=names.get(channel),
+                        sample_rate_hz=sample_rate_hz,
+                        initial_state=trace.initial_state,
+                        end_sample=trace.end_sample,
+                        transitions=_public_transitions(trace, sample_rate_hz),
+                    )
+                )
+            return channels
+    except zipfile.BadZipFile as exc:
+        raise SaleaeSalDecodeError("file is not a valid .sal/.zip archive") from exc
 
 
 def _markers(sda: _Trace, scl: _Trace) -> list[tuple[int, str]]:

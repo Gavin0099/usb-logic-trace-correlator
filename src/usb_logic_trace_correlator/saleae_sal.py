@@ -8,7 +8,9 @@ import zipfile
 import io
 
 from .saleae_sal_native import (
+    NativeDigitalChannel,
     SaleaeSalDecodeError,
+    decode_digital_channels_from_sal_bytes,
     decode_i2c_csv_from_sal_bytes,
     inspect_native_i2c_support,
 )
@@ -123,6 +125,14 @@ def extract_i2c_csv_from_sal_bytes(data: bytes) -> str | None:
 
     try:
         return decode_i2c_csv_from_sal_bytes(data)
+    except SaleaeSalDecodeError:
+        return None
+
+
+def extract_digital_channels_from_sal_bytes(data: bytes) -> list[NativeDigitalChannel] | None:
+    """Return named digital transitions from the bounded native `.sal` path."""
+    try:
+        return decode_digital_channels_from_sal_bytes(data)
     except SaleaeSalDecodeError:
         return None
 

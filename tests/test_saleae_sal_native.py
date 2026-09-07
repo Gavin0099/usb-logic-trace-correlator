@@ -14,9 +14,14 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from usb_logic_trace_correlator.saleae_sal import extract_i2c_csv_from_sal_bytes, inspect_sal_bytes
+from usb_logic_trace_correlator.saleae_sal import (
+    extract_digital_channels_from_sal_bytes,
+    extract_i2c_csv_from_sal_bytes,
+    inspect_sal_bytes,
+)
 from usb_logic_trace_correlator.saleae_sal_native import (
     SaleaeSalDecodeError,
+    decode_digital_channels_from_sal_bytes,
     decode_i2c_csv_from_sal_bytes,
 )
 
@@ -119,6 +124,7 @@ def test_extract_i2c_csv_fails_closed_for_unvalidated_binary_version() -> None:
     assert info.native_i2c_decodable is False
     assert "version 3" in (info.native_i2c_reason or "")
     assert extract_i2c_csv_from_sal_bytes(sal) is None
+    assert extract_digital_channels_from_sal_bytes(sal) is None
     with pytest.raises(SaleaeSalDecodeError, match="version 3"):
         decode_i2c_csv_from_sal_bytes(sal)
 
@@ -127,3 +133,23 @@ def test_extract_i2c_csv_requires_unambiguous_i2c_analyzer() -> None:
     sal = _make_sal(include_i2c=False)
 
     assert extract_i2c_csv_from_sal_bytes(sal) is None
+
+
+def test_decode_digital_channels_preserves_names_and_transition_samples() -> None:
+    channels = decode_digital_channels_from_sal_bytes(_make_sal())
+
+    assert [(channel.channel, channel.name, channel.initial_state, channel.end_sample) for channel in channels] == [
+        (0, "DATA", 1, 220),
+        (1, "CLK", 1, 220),
+    ]
+    assert [transition.sample for transition in channels[0].transitions] == [
+        10, 15, 35, 55, 85, 125, 155, 165, 175, 205
+    ]
+    assert [(transition.state, transition.edge) for transition in channels[0].transitions[:2]] == [
+        (0, "falling"),
+        (1, "rising"),
+    ]
+
+
+def test_extract_digital_channels_fails_closed_for_invalid_archive() -> None:
+    assert extract_digital_channels_from_sal_bytes(b"not-a-sal") is None
