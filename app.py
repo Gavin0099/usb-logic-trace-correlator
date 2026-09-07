@@ -295,9 +295,13 @@ def _render_saleae_export_guide(
     st.markdown("#### Saleae Export Guide")
 
     if saleae_mode == "sal":
-        st.info("目前是 .sal metadata 模式。若要啟用 correlation，請匯出 I2C Analyzer CSV。")
+        native_ready = bool(saleae_info and getattr(saleae_info, "native_i2c_decodable", False))
+        if native_ready:
+            st.info("目前是 .sal native I2C 模式；解碼結果會直接接回既有 correlation。")
+        else:
+            st.info("目前是 .sal metadata 模式；此 capture 無法走已驗證的 native path，請提供 I2C Analyzer CSV fallback。")
         if sal_auto_csv_text:
-            st.success("已在 .sal 內找到可用 CSV 內容，並可直接使用或下載檢查。")
+            st.success("已在 .sal 內取得可用的 I2C CSV 內容，並可直接使用或下載檢查。")
             st.download_button(
                 "下載自動抽取 CSV",
                 data=sal_auto_csv_text.encode("utf-8"),
@@ -590,7 +594,13 @@ if bushound_file:
     with s2:
         if saleae_mode == "sal" and saleae_info and saleae_info.ok:
             analyzer_text = ", ".join(saleae_info.analyzers) if saleae_info.analyzers else "none"
-            _status_block("Saleae .sal", "僅 Metadata", f"Analyzers: {analyzer_text}", "warn")
+            if getattr(saleae_info, "native_i2c_decodable", False):
+                _status_block("Saleae .sal", "Native I2C 可用", f"Analyzers: {analyzer_text}・可直接進入 correlation", "ok")
+            elif sal_auto_csv_text or saleae_text is not None:
+                _status_block("Saleae .sal", "I2C CSV 已取得", f"Analyzers: {analyzer_text}・使用 CSV ingress", "ok")
+            else:
+                reason = getattr(saleae_info, "native_i2c_reason", None) or "需要 Analyzer CSV fallback"
+                _status_block("Saleae .sal", "僅 Metadata", f"Analyzers: {analyzer_text}・{reason}", "warn")
         elif saleae_mode == "csv":
             _status_block("Saleae .sal", "可選", "以 CSV 為來源", "muted")
         else:
